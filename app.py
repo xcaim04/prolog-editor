@@ -1,3 +1,4 @@
+import os
 import sys
 import threading
 import tkinter as tk
@@ -5,9 +6,10 @@ from tkinter import filedialog, messagebox
 from components.menu_bar import MenuBar
 from components.toolbar import ToolBar
 from components.history_panel import HistoryPanel
+from components.status_bar import StatusBar
+from components.tab_panel import ClosableNotebook
 from components.editor_panel import EditorPanel
 from components.output_panel import OutputPanel
-from components.status_bar import StatusBar
 from prolog_runner import run_query, check_swipl_available
 from dialogs import prompt_query
 
@@ -20,13 +22,21 @@ class PrologEditor(tk.Tk):
         self.geometry("1100x700")
         self.configure(bg="#21252b")
 
-        self.current_path = None
-        self.last_query = "member(X,[1,2,3])"
+        # Estado general
+        self.last_query = ""
         self.swipl_ok = check_swipl_available()
+        self._tab_paths = {}  # Rutas por pestaña (frame -> path)
 
-        # Menu
-        self.menu = MenuBar(self, self._new_file, self._open_file, self._save_file,
-                            self._save_as, self._ask_and_run, self._run_last_query)
+        # Menú
+        self.menu = MenuBar(
+            self,
+            self._new_file,
+            self._open_file,
+            self._save_file,
+            self._save_as,
+            self._ask_and_run,
+            self._run_last_query
+        )
         self.config(menu=self.menu)
 
         # Toolbar
@@ -39,21 +49,28 @@ class PrologEditor(tk.Tk):
             on_export=self._export_output
         )
 
-        # Layout principal (historial | editor+salida)
-        paned = tk.PanedWindow(self, orient="horizontal", bg="#21252b")
-        paned.pack(fill="both", expand=True)
+        # Layout principal: historial fijo a la izquierda, notebook a la derecha
+        main_frame = tk.Frame(self, bg="#21252b")
+        main_frame.pack(fill="both", expand=True)
 
-        self.history = HistoryPanel(paned, on_select=self._run_selected_history)
-        paned.add(self.history)
+        # Panel de historial a la izquierda
+        left_frame = tk.Frame(main_frame, bg="#21252b", width=220)
+        left_frame.pack(side="left", fill="y")
+        self.history = HistoryPanel(left_frame, on_select=self._run_selected_history)
+        self.history.pack(fill="both", expand=True)
 
-        main_paned = tk.PanedWindow(paned, orient="vertical", bg="#21252b")
-        paned.add(main_paned)
+        # Notebook a la derecha
+        right_frame = tk.Frame(main_frame, bg="#21252b")
+        right_frame.pack(side="left", fill="both", expand=True)
+        self.notebook = ClosableNotebook(right_frame)
+        self.notebook.pack(fill="both", expand=True)
 
-        self.editor = EditorPanel(main_paned)
-        main_paned.add(self.editor)
-
-        self.output = OutputPanel(main_paned)
-        main_paned.add(self.output)
+        # Primera pestaña
+        editor, output = self.notebook.add_tab("Archivo 1")
+        self._focus_last_tab()
+        first_frame = self._get_last_frame()
+        if first_frame:
+            self._tab_paths[first_frame] = None
 
         # Status bar
         self.status = StatusBar(self)
@@ -61,6 +78,13 @@ class PrologEditor(tk.Tk):
 
         # Atajos
         self._bind_shortcuts()
+
+        # Ajuste de tema para visibilidad en Windows
+        try:
+            from tkinter import ttk
+            ttk.Style().theme_use("clam")
+        except Exception:
+            pass
 
     # --------- Atajos ----------
     def _bind_shortcuts(self):
@@ -71,8 +95,12 @@ class PrologEditor(tk.Tk):
 
     # --------- Archivo ----------
     def _new_file(self):
-        self.editor.set_code("")
-        self.current_path = None
+        editor, output = self.notebook.add_tab("Nuevo")
+        self._focus_last_tab()
+        frame = self._get_last_frame()
+        if frame:
+            self._tab_paths[frame] = None
+        editor.set_code("")
         self._update_status("Nuevo archivo")
 
     def _open_file(self):
@@ -81,30 +109,52 @@ class PrologEditor(tk.Tk):
             return
         try:
             with open(path, "r", encoding="utf-8") as f:
-                self.editor.set_code(f.read())
-            self.current_path = path
+                code = f.read()
+            title = os.path.basename(path)
+            editor, output = self.notebook.add_tab(title)
+            self._focus_last_tab()
+            frame = self._get_last_frame()
+            if frame:
+                self._tab_paths[frame] = path
+            editor.set_code(code)
             self._update_status(f"Abierto: {path}")
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir el archivo:\n{e}")
 
     def _save_file(self):
-        if not self.current_path:
+        frame = self._get_current_frame()
+        if frame is None:
+            self._new_file()
+            frame = self._get_current_frame()
+
+        editor, _ = self._get_current_tab()
+        current_path = self._tab_paths.get(frame)
+        if not current_path:
             return self._save_as()
+
         try:
-            with open(self.current_path, "w", encoding="utf-8") as f:
-                f.write(self.editor.get_code())
-            self._update_status(f"Guardado: {self.current_path}")
+            with open(current_path, "w", encoding="utf-8") as f:
+                f.write(editor.get_code())
+            self._update_status(f"Guardado: {current_path}")
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar el archivo:\n{e}")
 
     def _save_as(self):
+        frame = self._get_current_frame()
+        if frame is None:
+            self._new_file()
+            frame = self._get_current_frame()
+
+        editor, _ = self._get_current_tab()
         path = filedialog.asksaveasfilename(defaultextension=".pl", filetypes=[("Prolog", "*.pl"), ("Todos", "*.*")])
         if not path:
             return
         try:
             with open(path, "w", encoding="utf-8") as f:
-                f.write(self.editor.get_code())
-            self.current_path = path
+                f.write(editor.get_code())
+            self._tab_paths[frame] = path
+            basename = os.path.basename(path)
+            self.notebook.tab(frame, text=basename)
             self._update_status(f"Guardado como: {path}")
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar el archivo:\n{e}")
@@ -115,11 +165,14 @@ class PrologEditor(tk.Tk):
         self.status.update_status(msg)
 
     def _export_output(self):
+        _, output = self._get_current_tab()
+        if output is None:
+            return
         path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Texto", "*.txt")])
         if not path:
             return
         try:
-            content = self.output.text.get("1.0", "end-1c")
+            content = output.text.get("1.0", "end-1c")
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
             self._update_status(f"Salida exportada a {path}")
@@ -143,33 +196,71 @@ class PrologEditor(tk.Tk):
             self._run_query_async(selected)
 
     def _run_query_async(self, query):
-        code = self.editor.get_code()
+        editor, output = self._get_current_tab()
+        if editor is None or output is None:
+            self._new_file()
+            editor, output = self._get_current_tab()
+
+        code = editor.get_code()
         if not self.swipl_ok:
-            self.output.write("SWI-Prolog (swipl) no está disponible.\nInstálalo para ejecutar consultas.\n")
+            output.write("SWI-Prolog (swipl) no está disponible.\nInstálalo para ejecutar consultas.\n")
             self._update_status("swipl no disponible")
             return
 
         self._update_status("Ejecutando...")
-        self.output.write(f"> {query}\n")
+        output.write(f"> {query}\n")
 
         # Guardar en historial
         self.history.add_query(query)
 
         def worker():
             out = run_query(code, query, timeout=8)
-            self.after(0, lambda: self._on_run_done(out))
+            self.after(0, lambda: self._on_run_done(out, output))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_run_done(self, result_text):
+    def _on_run_done(self, result_text, output):
         if result_text:
             if not result_text.endswith("\n"):
                 result_text += "\n"
-            self.output.write(result_text)
+            output.write(result_text)
         else:
-            self.output.write("(sin salida)\n")
+            output.write("(sin salida)\n")
         self._update_status("Hecho.")
 
+    # --------- Helpers ----------
+    def _get_current_frame(self):
+        sel = self.notebook.select()
+        if not sel:
+            return None
+        return self.notebook.nametowidget(sel)
+
+    def _get_last_frame(self):
+        tabs = self.notebook.tabs()
+        if not tabs:
+            return None
+        return self.notebook.nametowidget(tabs[-1])
+
+    def _get_current_tab(self):
+        frame = self._get_current_frame()
+        if frame is None:
+            return None, None
+        editor = None
+        output = None
+        for child in frame.winfo_children():
+            if isinstance(child, EditorPanel):
+                editor = child
+            elif isinstance(child, OutputPanel):
+                output = child
+        return editor, output
+
+    def _focus_last_tab(self):
+        """Selecciona la última pestaña del notebook si existe."""
+        tabs = self.notebook.tabs()
+        if tabs:
+            self.notebook.select(tabs[-1])
+
+                
 if __name__ == "__main__":
     # Ajuste para pantallas HiDPI en Windows (opcional)
     if sys.platform.startswith("win"):
