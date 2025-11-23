@@ -1,20 +1,65 @@
-# Prolog Editor (Python + SWI-Prolog)
+# 🧠 Prolog Editor (Python + SWI-Prolog)
 
-Editor simple con ejecución integrada de consultas Prolog.
+Un editor gráfico hecho en **Python + Tkinter** para escribir, ejecutar y aprender Prolog de manera sencilla.  
+Incluye historial de consultas, pestañas cerrables, barra de estado y exportación de resultados.  
+Pensado para estudiantes, docentes y curiosos que quieran experimentar con lógica declarativa.
 
-## Requisitos
-- Python 3.8+
-- SWI-Prolog instalado y accesible como `swipl`
+---
+
+## 🚀 Características
+
+- ✍️ **Editor de código** con soporte para múltiples pestañas.
+- 📜 **Historial de consultas**: guarda y reutiliza tus queries.
+- ⚡ **Integración con SWI-Prolog**: ejecuta consultas directamente desde el editor.
+- 🗂️ **Abrir/guardar archivos `.pl`** fácilmente.
+- 🖱️ **Cerrar pestañas con clic derecho**.
+- 📤 **Exportar salida** a `.txt`.
+- 🎨 **Interfaz oscura** estilo moderno.
+
+---
+
+## 📦 Instalación
+
+1. Clona este repositorio:
+
+```bash
+   git clone https://github.com/xcaim04/prolog-editor.git
+   cd prolog-editor
+```
+
+## Instala depencias
+
+```bash
+pip install -r requirements.txt
+```
+
+### Asegurate de tener swipl en el path
+
+```bash
+swipl --version
+```
 
 ## Uso
-- `python app.py`
-- Escribe código `.pl`, guarda/abre archivos.
-- Presiona `Ctrl+Enter` para ejecutar una consulta (sin `?-` ni punto final).
-- Ejemplos:
-  - `padre(X, Y)`
-  - `member(X, [1,2,3])`
-  - `(member(5, [1,2,3]))` → salida `false`
 
-## Empaquetar (opcional)
-- `pip install pyinstaller`
-- `pyinstaller --onefile app.py`
+```bash
+python app.py
+```
+
+## Atajos de teclado
+
+* Ctrl+O → Abrir archivo
+
+* Ctrl+S → Guardar archivo
+
+* Ctrl+Enter → Ejecutar consulta
+
+* Ctrl+Shift+Enter → Ejecutar última consulta
+
+## Genera el .exe
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --noconsole --name PrologEditor app.py
+```
+
+Nota: En las consultas no terminan en `.` para poder ejecutarlas.
